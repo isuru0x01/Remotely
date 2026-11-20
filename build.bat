@@ -17,12 +17,20 @@ for %%F in (src\*.py) do (
     :: Ignore private files and __init__.py
     if not "!FILENAME:~0,1!"=="_" (
         echo.
-        echo [+] Compiling %%~nF.py -^> dist\%%~nF.exe
-        :: --onefile: packages everything into a single standalone portable .exe
-        :: --noconsole: suppresses console window (runs in background)
-        pyinstaller --onefile --noconsole --name "%%~nF" "%%F"
+        if /I "%%~nF"=="connector" (
+            set "CONSOLE_FLAG=--noconsole"
+        ) else (
+            set "CONSOLE_FLAG=--console"
+        )
+        echo [+] Compiling %%~nF.py -^> dist\%%~nF.exe (!CONSOLE_FLAG!)
+        pyinstaller --onefile !CONSOLE_FLAG! --name "%%~nF" "%%F"
         set /a COUNT+=1
     )
+)
+
+if exist config.example.json (
+    copy /Y config.example.json dist\config.example.json >nul
+    echo [+] Copied config.example.json to dist\
 )
 
 echo.
@@ -30,7 +38,7 @@ echo ========================================================
 if %COUNT% equ 0 (
     echo [!] No eligible Python files found in src\
 ) else (
-    echo [✓] Build complete! %COUNT% executable(s) generated in dist\
+    echo [OK] Build complete! %COUNT% executable(s) generated in dist\
 )
 echo ========================================================
 pause
