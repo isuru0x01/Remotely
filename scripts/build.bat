@@ -29,73 +29,48 @@ echo.
 echo ========================================================
 echo Windows Startup Configuration (shell:startup)
 echo ========================================================
-echo Target 1: %DIST_DIR%\connector.exe (Silent Boot Beacon)
-echo Target 2: %DIST_DIR%\remotely.exe -l (Incoming Task Listener)
+echo Target: %DIST_DIR%\remotely.exe -l (Silent Background Task Listener)
+echo Mode:   100%% Windowless (No command prompt popup on boot)
 echo.
 
 set "INSTALL_STARTUP=Y"
-set /p "INSTALL_STARTUP=Add connector.exe and remotely.exe -l to Windows Startup? [Y/n]: "
+set /p "INSTALL_STARTUP=Add remotely.exe -l to Windows Startup? [Y/n]: "
 if "%INSTALL_STARTUP%"=="" set "INSTALL_STARTUP=Y"
 
 if /i "%INSTALL_STARTUP%"=="Y" (
     echo.
-    echo [*] Registering shortcuts in shell:startup...
+    echo [*] Configuring silent startup launcher in shell:startup...
 
-    :: 1. Register connector.exe shortcut
-    if exist "%DIST_DIR%\connector.exe" (
-        powershell -NoProfile -Command ^
-            "$ws = New-Object -ComObject WScript.Shell; " ^
-            "$startup = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup'); " ^
-            "$s = $ws.CreateShortcut([System.IO.Path]::Combine($startup, 'RemotelyConnector.lnk')); " ^
-            "$s.TargetPath = '%DIST_DIR%\connector.exe'; " ^
-            "$s.WorkingDirectory = '%PROJECT_ROOT%'; " ^
-            "$s.Description = 'Remotely Silent Boot Beacon'; " ^
-            "$s.Save()"
-        echo [OK] Created startup shortcut: RemotelyConnector.lnk
+    set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+    set "VBS_FILE=!STARTUP_FOLDER!\RemotelyListener.vbs"
+
+    :: Remove any legacy shortcuts from previous versions
+    if exist "!STARTUP_FOLDER!\RemotelyConnector.lnk" del /f /q "!STARTUP_FOLDER!\RemotelyConnector.lnk" 2>nul
+    if exist "!STARTUP_FOLDER!\RemotelyListener.lnk" del /f /q "!STARTUP_FOLDER!\RemotelyListener.lnk" 2>nul
+
+    :: Generate silent VBScript launcher directly in shell:startup
+    :: The '0' window style executes remotely.exe hidden with NO console popup window
+    echo Set WshShell = CreateObject("WScript.Shell") > "!VBS_FILE!"
+    echo WshShell.CurrentDirectory = "%PROJECT_ROOT%" >> "!VBS_FILE!"
+    echo WshShell.Run """%DIST_DIR%\remotely.exe"" -l", 0, False >> "!VBS_FILE!"
+
+    if exist "!VBS_FILE!" (
+        echo [OK] Created silent launcher: shell:startup\RemotelyListener.vbs
+        echo [✓] remotely.exe -l will run completely in the background on startup (no popups).
     ) else (
-        echo [!] Warning: %DIST_DIR%\connector.exe was not found.
+        echo [!] Error: Failed to write to startup folder.
     )
-
-    :: 2. Register remotely.exe -l shortcut
-    if exist "%DIST_DIR%\remotely.exe" (
-        powershell -NoProfile -Command ^
-            "$ws = New-Object -ComObject WScript.Shell; " ^
-            "$startup = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup'); " ^
-            "$s = $ws.CreateShortcut([System.IO.Path]::Combine($startup, 'RemotelyListener.lnk')); " ^
-            "$s.TargetPath = '%DIST_DIR%\remotely.exe'; " ^
-            "$s.Arguments = '-l'; " ^
-            "$s.WorkingDirectory = '%PROJECT_ROOT%'; " ^
-            "$s.Description = 'Remotely AI Task Listener'; " ^
-            "$s.Save()"
-        echo [OK] Created startup shortcut: RemotelyListener.lnk (-l)
-    ) else (
-        echo [!] Warning: %DIST_DIR%\remotely.exe was not found.
-    )
-
-    echo.
-    echo [✓] Both executables are now registered to start automatically on Windows boot.
 
     echo.
     set "START_NOW=Y"
-    set /p "START_NOW=Start connector.exe and remotely.exe -l right now? [Y/n]: "
+    set /p "START_NOW=Start remotely.exe -l in the background right now? [Y/n]: "
     if "%START_NOW%"=="" set "START_NOW=Y"
 
     if /i "!START_NOW!"=="Y" (
         echo.
-        echo [*] Launching executables...
-
-        if exist "%DIST_DIR%\connector.exe" (
-            start "" /d "%PROJECT_ROOT%" "%DIST_DIR%\connector.exe"
-            echo [OK] Started connector.exe (silent background boot beacon)
-        )
-
-        if exist "%DIST_DIR%\remotely.exe" (
-            start "Remotely Listener" /d "%PROJECT_ROOT%" "%DIST_DIR%\remotely.exe" -l
-            echo [OK] Started remotely.exe -l (task listener running in separate window)
-        )
-
-        echo.
-        echo [✓] Both processes are now active and running!
+        echo [*] Launching remotely.exe -l silently in the background...
+        wscript.exe "!VBS_FILE!"
+        echo [✓] Remotely listener is now active in the background.
     ) else (
         echo [i] Skipped immediate launch.
     )
