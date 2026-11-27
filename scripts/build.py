@@ -170,6 +170,19 @@ def build_targets(
         shutil.copy2(example_cfg, os.path.join(dist_dir, "config.example.json"))
         print(f"\n[+] Copied config.example.json -> {dist_dir}/")
 
+    # Generate run_silent.vbs in dist/ for launching remotely.exe with zero console popups
+    vbs_path = os.path.join(dist_dir, "run_silent.vbs")
+    vbs_content = (
+        'Set WshShell = CreateObject("WScript.Shell")\r\n'
+        'Set FSO = CreateObject("Scripting.FileSystemObject")\r\n'
+        'BaseDir = FSO.GetParentFolderName(WScript.ScriptFullName)\r\n'
+        'WshShell.CurrentDirectory = BaseDir\r\n'
+        'WshShell.Run """" & BaseDir & "\\remotely.exe"" -l", 0, False\r\n'
+    )
+    with open(vbs_path, "w", encoding="utf-8") as f:
+        f.write(vbs_content)
+    print(f"[+] Generated silent launcher -> {dist_dir}/run_silent.vbs")
+
     print("\n" + "=" * 60)
     print(f"[OK] All selected targets compiled successfully into:\n     {dist_dir}")
     print("=" * 60)
