@@ -16,7 +16,12 @@ if sys.platform == "win32":
 # Ensure current directory is in sys.path for direct script execution
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from connector import get_topic_url, listen_for_messages, send_notification
+from connector import (
+    get_computer_id,
+    get_topic_url,
+    listen_for_messages,
+    send_notification,
+)
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 SELECTED_MODEL = None
@@ -150,14 +155,15 @@ def start_model(model_name):
         bool: True if started successfully, False otherwise.
     """
     global SELECTED_MODEL
+    comp_id = get_computer_id()
     model_name = model_name.strip()
     if not model_name:
-        notice = "Usage: /start_model <model_name>"
+        notice = f"Usage: {comp_id}/start_model <model_name>"
         print(f"[!] {notice}")
-        send_notification(notice, title="Model Error")
+        send_notification(notice, title=f"[{comp_id}] Model Error")
         return False
 
-    print(f"\n[*] /start_model requested for: '{model_name}'")
+    print(f"\n[*] [ID: {comp_id}] /start_model requested for: '{model_name}'")
 
     available = get_available_models()
     is_installed = any(
@@ -170,12 +176,12 @@ def start_model(model_name):
     # 1. Pull model if not available locally
     if not is_installed:
         msg = (
-            f"Model '{model_name}' not found locally. "
-            "Pulling from Ollama website/registry... this may take some time."
+            f"Model '{model_name}' not found locally on computer [{comp_id}]. "
+            "Pulling from Ollama registry... this may take some time."
         )
         print(f"[*] {msg}")
         send_notification(
-            msg, title=f"Pulling Model: {model_name}", priority="low"
+            msg, title=f"[{comp_id}] Pulling Model: {model_name}", priority="low"
         )
 
         success, err = pull_model(model_name)
@@ -183,7 +189,7 @@ def start_model(model_name):
             fail_msg = f"Failed to pull model '{model_name}': {err}"
             print(f"[!] {fail_msg}")
             send_notification(
-                fail_msg, title="Model Pull Failed", priority="high"
+                fail_msg, title=f"[{comp_id}] Model Pull Failed", priority="high"
             )
             return False
 
@@ -193,7 +199,7 @@ def start_model(model_name):
     print(f"[*] Loading '{model_name}' into memory...")
     send_notification(
         f"Loading '{model_name}' into memory...",
-        title="Loading Model",
+        title=f"[{comp_id}] Loading Model",
         priority="low",
     )
 
@@ -202,17 +208,17 @@ def start_model(model_name):
         fail_msg = f"Failed to load model '{model_name}': {load_err}"
         print(f"[!] {fail_msg}")
         send_notification(
-            fail_msg, title="Model Load Failed", priority="high"
+            fail_msg, title=f"[{comp_id}] Model Load Failed", priority="high"
         )
         return False
 
     SELECTED_MODEL = model_name
     success_msg = (
-        f"Model '{model_name}' is now active and ready for /task instructions."
+        f"Model '{model_name}' is now active on computer [{comp_id}] and ready for tasks."
     )
     print(f"[✓] {success_msg}\n")
     send_notification(
-        success_msg, title=f"Active Model: {model_name}", priority="default"
+        success_msg, title=f"[{comp_id}] Active Model: {model_name}", priority="default"
     )
     return True
 
@@ -222,27 +228,27 @@ def send_models_list():
     Format and send the list of available/installed models to ntfy.sh
     when no models are currently running in memory.
     """
+    comp_id = get_computer_id()
     available = get_available_models()
     if available:
         model_lines = "\n".join(f"• {m}" for m in available)
         msg = (
-            "No models are currently active in memory.\n\n"
-            "Available installed models:\n"
-            f"{model_lines}\n\n"
-            "To select and run a model (or download a new one), send:\n"
-            "/start_model <model_name>"
+            f"Computer [{comp_id}]: No models currently active in memory.\n\n"
+            f"Available installed models:\n{model_lines}\n\n"
+            f"To select and run a model, send:\n"
+            f"{comp_id}/start_model <model_name>"
         )
         print(f"[!] {msg}")
         send_notification(
-            msg, title="No Running Models (Available List)", priority="default"
+            msg, title=f"[{comp_id}] No Running Models", priority="default"
         )
     else:
         msg = (
-            f"No models are currently running or installed on Ollama ({OLLAMA_HOST}).\n"
-            "To download and run a new model, send: /start_model <model_name>"
+            f"Computer [{comp_id}]: No models running or installed on Ollama ({OLLAMA_HOST}).\n"
+            f"To download and run a model, send: {comp_id}/start_model <model_name>"
         )
         print(f"[!] {msg}")
-        send_notification(msg, title="No Models Found", priority="high")
+        send_notification(msg, title=f"[{comp_id}] No Models Found", priority="high")
     return available
 
 
@@ -289,7 +295,8 @@ def handle_task(task_text):
     and instruct how to start one via /start_model.
     """
     global SELECTED_MODEL
-    print(f"\n[*] Processing /task: {task_text}")
+    comp_id = get_computer_id()
+    print(f"\n[*] [ID: {comp_id}] Processing /task: {task_text}")
 
     selected_model = SELECTED_MODEL
     if not selected_model:
@@ -305,8 +312,8 @@ def handle_task(task_text):
     print(f"[+] Directing to active model: {selected_model}")
 
     send_notification(
-        f"Processing with [{selected_model}]...",
-        title="Task in Progress",
+        f"Processing with [{selected_model}] on [{comp_id}]...",
+        title=f"[{comp_id}] Task in Progress",
         priority="low",
     )
 
@@ -316,7 +323,7 @@ def handle_task(task_text):
 
     # Send response back to the ntfy topic (chunks automatically if long)
     send_notification(
-        response, title=f"Task Result ({selected_model})", priority="default"
+        response, title=f"[{comp_id}] Task Result ({selected_model})", priority="default"
     )
 
 
@@ -324,6 +331,11 @@ def is_bot_echo(title):
     """Filter out responses generated by remotely itself to prevent notification loops."""
     if not title:
         return False
+    clean_title = title.strip()
+    # Strip leading computer ID tag e.g. "[43434343] Task Result" -> "Task Result"
+    if clean_title.startswith("[") and "]" in clean_title:
+        clean_title = clean_title.split("]", 1)[1].strip()
+
     bot_titles = (
         "Task Result",
         "Task in Progress",
@@ -338,44 +350,103 @@ def is_bot_echo(title):
         "Task Error",
         "Model Pull Failed",
         "Model Load Failed",
+        "Remotely Online",
     )
-    return any(title.startswith(prefix) for prefix in bot_titles)
+    return any(clean_title.startswith(prefix) for prefix in bot_titles)
+
+
+def parse_targeted_command(raw_text, my_id):
+    """
+    Check if an incoming message targets this specific computer ID or is a broadcast.
+
+    Supports formats:
+      - 43434343/task <instruction>
+      - 43434343/start_model <name>
+      - 43434343/models
+      - 43434343 /task <instruction>
+      - 43434343: /task <instruction>
+      - all/task <instruction> (broadcast to all)
+      - /task <instruction> (broadcast to all)
+
+    Returns:
+        tuple (is_for_me: bool, command_text: str)
+    """
+    text = raw_text.strip()
+    if not text:
+        return False, ""
+
+    # Pattern 1: {id}/<command> (e.g. "43434343/task Hello")
+    if "/" in text:
+        prefix, rest = text.split("/", 1)
+        prefix = prefix.strip().rstrip(":")
+        rest = "/" + rest.strip()
+        if prefix.lower() == "all" or prefix == my_id:
+            return True, rest
+        elif prefix.isalnum() and len(prefix) >= 4:
+            # Explicitly addressed to another computer ID
+            return False, ""
+
+    # Pattern 2: {id} <command> (e.g. "43434343 /task Hello" or "43434343 task Hello")
+    parts = text.split(None, 1)
+    if len(parts) >= 2:
+        prefix = parts[0].strip().rstrip(":")
+        rest = parts[1].strip()
+        if not rest.startswith("/"):
+            rest = "/" + rest
+
+        if prefix.lower() == "all" or prefix == my_id:
+            return True, rest
+        elif prefix.isalnum() and len(prefix) >= 4:
+            # Explicitly addressed to another computer ID
+            return False, ""
+
+    # Pattern 3: Direct command without prefix (e.g. "/task Hello")
+    if text.startswith("/"):
+        return True, text
+
+    return False, text
 
 
 def message_handler(event):
     """
     Handle incoming ntfy events:
-    - Filters out bot's own response messages to avoid echoes.
-    - '/start_model <name>': pulls (if new) and loads model into memory.
-    - '/task <prompt>': redirects prompt to active model.
-    - '/models' or '/list': sends model status, active model, and list to ntfy.
+    - Filters out bot responses.
+    - Matches computer ID prefix (e.g. 43434343/task ...)
+    - Dispatches '/start_model', '/task', and '/models' commands.
     """
     title = event.get("title") or ""
     if is_bot_echo(title):
         return
 
-    message = event.get("message", "").strip()
+    raw_message = event.get("message", "").strip()
+    my_id = get_computer_id()
+
+    is_for_me, command = parse_targeted_command(raw_message, my_id)
+    if not is_for_me:
+        # Message was targeted to another computer, quietly ignore
+        return
+
     timestamp = time.strftime(
         "%Y-%m-%d %H:%M:%S", time.localtime(event.get("time", time.time()))
     )
 
-    print(f"[{timestamp}] Incoming message: {message!r} (Title: {title!r})")
+    print(f"[{timestamp}] [Computer ID: {my_id}] Received command: {command!r}")
 
-    if message.startswith("/start_model"):
-        model_name = message[len("/start_model") :].strip()
+    if command.startswith("/start_model"):
+        model_name = command[len("/start_model") :].strip()
         start_model(model_name)
 
-    elif message.startswith("/task"):
-        task_prompt = message[len("/task") :].strip()
+    elif command.startswith("/task"):
+        task_prompt = command[len("/task") :].strip()
         if not task_prompt:
-            notice = "Empty task prompt received. Usage: /task <your instruction>"
+            notice = f"Empty task prompt. Usage: {my_id}/task <your instruction>"
             print(f"[!] {notice}")
-            send_notification(notice, title="Task Error")
+            send_notification(notice, title=f"[{my_id}] Task Error")
             return
 
         handle_task(task_prompt)
 
-    elif message.startswith(("/models", "/list")):
+    elif command.startswith(("/models", "/list")):
         running = get_running_models()
         active_prefix = (
             f"Active Model: {SELECTED_MODEL}\n\n" if SELECTED_MODEL else ""
@@ -383,8 +454,8 @@ def message_handler(event):
         if running:
             running_lines = "\n".join(f"• {m}" for m in running)
             send_notification(
-                f"{active_prefix}Currently running in memory:\n{running_lines}",
-                title="Running Models",
+                f"Computer [{my_id}]\n\n{active_prefix}Currently running in memory:\n{running_lines}",
+                title=f"[{my_id}] Running Models",
             )
         else:
             send_models_list()
@@ -392,11 +463,25 @@ def message_handler(event):
 
 def main():
     topic_url = get_topic_url()
+    comp_id = get_computer_id()
+
     print("=" * 60)
     print(" Remotely - Message & Task Listener")
     print("=" * 60)
+    print(f"[+] Computer ID: {comp_id}")
     print(f"[+] Topic URL  : {topic_url}")
     print(f"[+] Ollama Host: {OLLAMA_HOST}")
+
+    # Announce this computer's online status and ID to ntfy.sh
+    send_notification(
+        f"Computer ID: {comp_id} is online and listening.\n\n"
+        f"Commands for this machine:\n"
+        f"• {comp_id}/task <prompt>\n"
+        f"• {comp_id}/start_model <model_name>\n"
+        f"• {comp_id}/models",
+        title=f"System Online [{comp_id}]",
+        tags="computer,satellite",
+    )
 
     running = get_running_models()
     if running:
@@ -408,7 +493,7 @@ def main():
             print(f"[+] Available installed models: {', '.join(available)}")
         send_models_list()
 
-    print("[*] Listening for incoming messages... (Press Ctrl+C to exit)\n")
+    print(f"[*] Listening for messages targeted to [{comp_id}] or broadcast... (Press Ctrl+C to exit)\n")
 
     try:
         listen_for_messages(on_message=message_handler)

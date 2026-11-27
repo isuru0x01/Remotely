@@ -108,15 +108,17 @@ python3 src/remotely.py start_model llama3.2
 
 ---
 
-### 2. Remote Control over ntfy
+### 2. Remote Control over ntfy (Targeting by Computer ID)
 
-Once the listener is running, you can publish messages to your ntfy topic from your phone or web browser:
+Each machine generates or uses a unique 8-digit **Computer ID** (e.g. `43434343`) announced to your ntfy topic on boot. This allows running Remotely across multiple computers on the same ntfy topic while directing tasks to specific machines:
 
 | Command | Action | Example |
 | :--- | :--- | :--- |
-| `/task <instruction>` | Directs the task to the active model and replies with the result. | `/task Summarize the server error logs` |
-| `/start_model <name>` | Loads a model into memory or downloads it from the Ollama library. | `/start_model llama3.2` |
-| `/models` or `/list` | Replies with the active model, models in memory, and installed models. | `/models` |
+| `<ID>/task <instruction>` | Directs the task to that specific computer. | `43434343/task Write a Python script` |
+| `<ID>/start_model <name>` | Loads or downloads a model on that specific computer. | `43434343/start_model llama3.2` |
+| `<ID>/models` or `<ID>/list`| Replies with model status from that specific computer. | `43434343/models` |
+| `all/task <instruction>` | Broadcasts the command to **all** connected computers. | `all/task Check system status` |
+| `/task <instruction>` | Broadcast fallback (processed by all listeners). | `/task Hello` |
 
 ---
 

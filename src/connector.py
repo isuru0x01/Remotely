@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import sys
 import time
 import urllib.error
@@ -70,6 +71,62 @@ def get_topic_url():
         return url.strip()
 
     return None
+
+
+_CACHED_COMPUTER_ID = None
+
+
+def get_computer_id(force_refresh=False):
+    """
+    Resolve or generate a unique 8-digit application/computer ID.
+    Precedence:
+    1. REMOTELY_COMPUTER_ID environment variable
+    2. 'computer_id' in config.json
+    3. Stored in local .computer_id file
+    4. Randomly generated 8-digit integer
+    """
+    global _CACHED_COMPUTER_ID
+    if _CACHED_COMPUTER_ID and not force_refresh:
+        return _CACHED_COMPUTER_ID
+
+    env_id = os.environ.get("REMOTELY_COMPUTER_ID")
+    if env_id:
+        _CACHED_COMPUTER_ID = str(env_id).strip()
+        return _CACHED_COMPUTER_ID
+
+    cfg = load_config()
+    cfg_id = cfg.get("computer_id") or cfg.get("COMPUTER_ID")
+    if cfg_id:
+        _CACHED_COMPUTER_ID = str(cfg_id).strip()
+        return _CACHED_COMPUTER_ID
+
+    base_dir = get_base_dir()
+    id_file = os.path.join(base_dir, ".computer_id")
+    if not os.path.isfile(id_file):
+        id_file_parent = os.path.join(base_dir, "..", ".computer_id")
+        if os.path.isfile(id_file_parent):
+            id_file = id_file_parent
+
+    if os.path.isfile(id_file) and not force_refresh:
+        try:
+            with open(id_file, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if val:
+                    _CACHED_COMPUTER_ID = val
+                    return _CACHED_COMPUTER_ID
+        except Exception:
+            pass
+
+    # Generate an 8-digit randomized computer ID
+    new_id = str(random.randint(10000000, 99999999))
+    try:
+        with open(id_file, "w", encoding="utf-8") as f:
+            f.write(new_id + "\n")
+    except Exception:
+        pass
+
+    _CACHED_COMPUTER_ID = new_id
+    return _CACHED_COMPUTER_ID
 
 
 def _send_single_notification(data_bytes, title, target_url, priority, tags=None):
@@ -166,11 +223,19 @@ def send_notification(
 
 
 def notify_boot(topic_url=None, retries=12, delay=5):
-    """Send an initial boot/online beacon to the configured ntfy topic."""
+    """Send an initial boot/online beacon to the configured ntfy topic including computer ID."""
+    comp_id = get_computer_id()
+    title = f"System Online [{comp_id}]"
+    msg = (
+        f"Computer ID: {comp_id} is up.\n"
+        f"Target this machine: {comp_id}/task <instruction>\n"
+        f"Manage models:       {comp_id}/start_model <name>\n"
+        f"View models:         {comp_id}/models"
+    )
     for _ in range(retries):
         if send_notification(
-            "i am up",
-            title="System Online",
+            msg,
+            title=title,
             topic_url=topic_url,
             tags="computer,white_check_mark",
         ):

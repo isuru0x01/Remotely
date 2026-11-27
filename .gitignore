@@ -3,11 +3,11 @@ build/
 dist/
 *.spec
 
-
-# Configuration secrets
+# Configuration & Machine Secrets
+config.json
+.computer_id
 
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
-

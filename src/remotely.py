@@ -5,7 +5,11 @@ Remotely - Remote Management & AI Task Agent CLI
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
+import time
+import urllib.request
 
 # Safe encoding handling on Windows terminals
 if sys.platform == "win32":
@@ -19,6 +23,7 @@ if sys.platform == "win32":
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from connector import (
+    get_computer_id,
     get_topic_url,
     notify_boot,
     poll_messages,
@@ -32,8 +37,126 @@ from listener import (
 )
 
 
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+
+def refresh_ollama_path():
+    """Ensure standard Ollama installation directories are present in process PATH."""
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
+        os.path.join(local_app_data, "Programs", "Ollama") if local_app_data else None,
+        r"C:\Program Files\Ollama",
+    ]
+    current_path = os.environ.get("PATH", "")
+    for folder in candidates:
+        if folder and os.path.isdir(folder) and folder not in current_path:
+            os.environ["PATH"] = folder + os.pathsep + current_path
+            current_path = os.environ["PATH"]
+
+
+def is_ollama_installed(host=None):
+    """
+    Check if Ollama is installed on the system:
+    1. Check if 'ollama' is in PATH.
+    2. Check standard Windows installation directories.
+    3. Check if local Ollama daemon is already reachable.
+    """
+    refresh_ollama_path()
+
+    if shutil.which("ollama"):
+        return True
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data and os.path.isfile(
+        os.path.join(local_app_data, "Programs", "Ollama", "ollama.exe")
+    ):
+        return True
+
+    if os.path.isfile(r"C:\Program Files\Ollama\ollama.exe"):
+        return True
+
+    target_host = host or os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    try:
+        req = urllib.request.Request(
+            f"{target_host}/api/tags", headers={"User-Agent": "remotely/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return resp.status == 200
+    except Exception:
+        pass
+
+    return False
+
+
+def install_ollama():
+    """
+    Install Ollama via PowerShell on Windows using the official command:
+    irm https://ollama.com/install.ps1 | iex
+    """
+    print("[*] Ollama not found on system. Initiating automated installation via PowerShell...")
+    send_notification(
+        "Ollama is not installed. Initiating installation via PowerShell...",
+        title="Ollama Setup",
+        priority="high",
+    )
+
+    if sys.platform == "win32":
+        cmd = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "irm https://ollama.com/install.ps1 | iex",
+        ]
+    elif shutil.which("pwsh") or shutil.which("powershell"):
+        ps_exe = shutil.which("pwsh") or shutil.which("powershell")
+        cmd = [
+            ps_exe,
+            "-NoProfile",
+            "-Command",
+            "irm https://ollama.com/install.ps1 | iex",
+        ]
+    elif shutil.which("curl") and shutil.which("sh"):
+        cmd = ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]
+    else:
+        err = "Neither PowerShell nor curl was found on system to install Ollama."
+        print(f"[!] {err}", file=sys.stderr)
+        send_notification(err, title="Ollama Install Failed", priority="high")
+        return False
+
+    try:
+        print(f"[+] Executing: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if result.returncode == 0:
+            refresh_ollama_path()
+            msg = "Ollama installed successfully."
+            print(f"[✓] {msg}")
+            send_notification(msg, title="Ollama Installed", priority="default")
+            time.sleep(3)
+            return True
+        else:
+            err = f"Ollama installation failed (code {result.returncode}): {result.stderr or result.stdout}"
+            print(f"[!] {err}", file=sys.stderr)
+            send_notification(err[:500], title="Ollama Install Failed", priority="high")
+            return False
+    except Exception as e:
+        err = f"Failed to execute Ollama installation: {e}"
+        print(f"[!] {err}", file=sys.stderr)
+        send_notification(err, title="Ollama Install Error", priority="high")
+        return False
+
+
+def ensure_ollama(host=None):
+    """Verify Ollama presence, installing automatically if missing."""
+    if is_ollama_installed(host=host):
+        return True
+    return install_ollama()
+
+
 def cmd_listener(args):
     """Start the incoming message & task listener."""
+    ensure_ollama()
     start_listener()
 
 
@@ -91,6 +214,7 @@ def cmd_poll(args):
 
 def cmd_start_model(args):
     """Select and run an Ollama model, pulling if needed."""
+    ensure_ollama()
     model_name = getattr(args, "name", None) or getattr(args, "start_model", None)
     if not model_name:
         print("[!] Error: Model name cannot be empty.", file=sys.stderr)
@@ -101,6 +225,7 @@ def cmd_start_model(args):
 
 def cmd_models(args):
     """Check running and available Ollama models."""
+    ensure_ollama()
     running = get_running_models()
     available = get_available_models()
 
@@ -161,6 +286,13 @@ Examples:
 
     # Top-level quick action flags
     parser.add_argument(
+        "--id",
+        "--computer-id",
+        dest="computer_id",
+        metavar="ID",
+        help="Override the computer/application ID (e.g. 43434343)",
+    )
+    parser.add_argument(
         "-l",
         "--listener",
         "--listen",
@@ -193,6 +325,11 @@ Examples:
         "--start-model",
         metavar="MODEL_NAME",
         help="Select and start an Ollama model (pulls from registry if new)",
+    )
+    parser.add_argument(
+        "--install-ollama",
+        action="store_true",
+        help="Check and install Ollama via PowerShell (irm https://ollama.com/install.ps1 | iex) if missing",
     )
 
     # Subcommands
@@ -279,6 +416,8 @@ def main():
         os.environ["REMOTELY_TOPIC_URL"] = args.topic_url
     if args.ollama_host:
         os.environ["OLLAMA_HOST"] = args.ollama_host
+    if args.computer_id:
+        os.environ["REMOTELY_COMPUTER_ID"] = args.computer_id.strip()
 
     # Handle quick flags
     if args.run_listener:
@@ -296,6 +435,9 @@ def main():
         return
     if args.start_model:
         cmd_start_model(args)
+        return
+    if args.install_ollama:
+        ensure_ollama()
         return
 
     # Handle subcommands
