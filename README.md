@@ -23,9 +23,12 @@ A lightweight, zero-dependency remote management beacon and local AI task agent.
 
 ```mermaid
 flowchart LR
-    User[User / Mobile / Browser] <-->|Push Notifications| Ntfy["ntfy.sh (Private Topic)"]
-    Ntfy <-->|Stream / Poll| Remotely["Remotely Listener (src/listener.py or remotely.exe)"]
-    Remotely <-->|REST API (:11434)| Ollama["Local Ollama Service"]
+    User["User (Mobile / Web)"] -->|Send Commands| Ntfy["ntfy.sh (Private Topic)"]
+    Ntfy -->|Push Notifications| User
+    Ntfy -->|Stream Tasks| Remotely["Remotely Listener"]
+    Remotely -->|Publish Results| Ntfy
+    Remotely -->|REST API :11434| Ollama["Local Ollama Service"]
+    Ollama -->|Model Output| Remotely
 ```
 
 ---

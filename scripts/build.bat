@@ -74,6 +74,31 @@ if /i "%INSTALL_STARTUP%"=="Y" (
 
     echo.
     echo [✓] Both executables are now registered to start automatically on Windows boot.
+
+    echo.
+    set "START_NOW=Y"
+    set /p "START_NOW=Start connector.exe and remotely.exe -l right now? [Y/n]: "
+    if "%START_NOW%"=="" set "START_NOW=Y"
+
+    if /i "!START_NOW!"=="Y" (
+        echo.
+        echo [*] Launching executables...
+
+        if exist "%DIST_DIR%\connector.exe" (
+            start "" /d "%PROJECT_ROOT%" "%DIST_DIR%\connector.exe"
+            echo [OK] Started connector.exe (silent background boot beacon)
+        )
+
+        if exist "%DIST_DIR%\remotely.exe" (
+            start "Remotely Listener" /d "%PROJECT_ROOT%" "%DIST_DIR%\remotely.exe" -l
+            echo [OK] Started remotely.exe -l (task listener running in separate window)
+        )
+
+        echo.
+        echo [✓] Both processes are now active and running!
+    ) else (
+        echo [i] Skipped immediate launch.
+    )
 ) else (
     echo [i] Skipped startup registration.
 )
