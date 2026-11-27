@@ -148,6 +148,8 @@ Run the batch script from Command Prompt on a Windows host:
 scripts\build.bat
 ```
 
+Upon successful compilation, `build.bat` will automatically offer to register both `connector.exe` and `remotely.exe -l` into your Windows Startup folder (`shell:startup`) as shortcuts.
+
 Compiled executables will be output to the `dist/` directory:
 - **`dist/remotely.exe`**: CLI utility with full console and help flag support.
 - **`dist/connector.exe`**: Silent background beacon (`--noconsole`).
