@@ -7,5 +7,4 @@ WORKDIR /src
 SHELL ["/bin/bash", "-c"]
 
 # Set default entrypoint to run the multi-file build script
-ENTRYPOINT ["/bin/bash", "-c", "python build.py"]
-
+ENTRYPOINT ["/bin/bash", "-c", "python scripts/build.py"]

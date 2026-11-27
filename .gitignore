@@ -4,6 +4,7 @@ dist/
 *.spec
 
 
+# Configuration secrets
 
 # Python cache
 __pycache__/
