@@ -41,26 +41,42 @@ if /i not "%INSTALL_STARTUP%"=="Y" goto skip_startup
 echo.
 echo [*] Configuring silent startup launcher in shell:startup...
 
+:: Verify the target executable exists
+if not exist "%DIST_DIR%\remotely.exe" (
+    echo [!] Error: %DIST_DIR%\remotely.exe was not found.
+    echo     Please make sure remotely.exe compiled successfully.
+    goto skip_startup
+)
+
 set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "TARGET_VBS=%STARTUP_FOLDER%\RemotelyListener.vbs"
 
 :: Remove any legacy shortcuts from previous versions
 if exist "%STARTUP_FOLDER%\RemotelyConnector.lnk" del /f /q "%STARTUP_FOLDER%\RemotelyConnector.lnk" 2>nul
 if exist "%STARTUP_FOLDER%\RemotelyListener.lnk" del /f /q "%STARTUP_FOLDER%\RemotelyListener.lnk" 2>nul
+if exist "%TARGET_VBS%" del /f /q "%TARGET_VBS%" 2>nul
 
-:: Copy pre-generated silent launcher into shell:startup
-if not exist "%DIST_DIR%\run_silent.vbs" (
-    echo [!] Error: %DIST_DIR%\run_silent.vbs was not found.
-    goto skip_startup
-)
-
-copy /Y "%DIST_DIR%\run_silent.vbs" "%TARGET_VBS%" >nul
+:: Generate silent VBScript launcher in shell:startup with exact absolute paths and existence guard
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$vbsPath = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup', 'RemotelyListener.vbs'); " ^
+    "$exePath = '%DIST_DIR%\remotely.exe'; " ^
+    "$workDir = '%PROJECT_ROOT%'; " ^
+    "$content = 'Set FSO = CreateObject(\"Scripting.FileSystemObject\")' + [Environment]::NewLine + " ^
+    "           'Set WshShell = CreateObject(\"WScript.Shell\")' + [Environment]::NewLine + " ^
+    "           'ExePath = \"' + $exePath + '\"' + [Environment]::NewLine + " ^
+    "           'If FSO.FileExists(ExePath) Then' + [Environment]::NewLine + " ^
+    "           '    WshShell.CurrentDirectory = \"' + $workDir + '\"' + [Environment]::NewLine + " ^
+    "           '    WshShell.Run \"\"\"\" & ExePath & \"\"\" -l\", 0, False' + [Environment]::NewLine + " ^
+    "           'End If'; " ^
+    "[System.IO.File]::WriteAllText($vbsPath, $content)"
 
 if exist "%TARGET_VBS%" (
     echo [OK] Created silent launcher: shell:startup\RemotelyListener.vbs
-    echo [OK] remotely.exe -l is configured to run silently in background on boot.
+    echo [OK] Target: %DIST_DIR%\remotely.exe -l
+    echo [OK] Working Directory: %PROJECT_ROOT%
+    echo [✓] remotely.exe -l is configured to run silently in the background on boot.
 ) else (
-    echo [!] Error: Failed to copy launcher to startup folder.
+    echo [!] Error: Failed to write launcher to startup folder.
     goto skip_startup
 )
 
@@ -73,7 +89,7 @@ if /i not "%START_NOW%"=="Y" goto skip_startup
 echo.
 echo [*] Launching remotely.exe -l silently in the background...
 start "" wscript.exe "%TARGET_VBS%"
-echo [OK] Remotely listener is now active in the background.
+echo [✓] Remotely listener is now active in the background.
 
 :skip_startup
 echo.
